@@ -41,7 +41,8 @@ function log(msg,cls){
 log('Login page loaded: '+location.href);
 log('This document is on origin: '+location.origin);
 log('(This is a DIFFERENT origin from the app — the cross-origin hop that isolation keys off.)','warn');
-log('window.opener here = '+(window.opener ? 'present' : 'NULL'), window.opener?'ok':'err');
+const openerPresent = !!window.opener;
+log('window.opener here = '+(openerPresent ? 'present' : 'NULL — cross-window channel to parent is gone'), openerPresent?'ok':'err');
 
 const code='FAKE_CODE_'+Math.random().toString(36).slice(2,10);
 
@@ -52,8 +53,16 @@ function finish(){
 }
 document.getElementById('manualBtn').onclick=finish;
 
-// Simulate login latency, then redirect back (in a normal browser this completes the flow)
-setTimeout(finish, 1400);
+if(!openerPresent){
+  // Real-world signature: with no opener, the auth result can't be returned, so the
+  // interactive flow aborts and the popup self-closes in ~0.8s. Reproduce that here.
+  document.getElementById('status').textContent='Cannot return the auth result (window.opener is gone). Aborting…';
+  log('No opener → cannot return the code. Self-closing in ~0.8s (matches the observed real behavior).','err');
+  setTimeout(()=>{ try{ window.close(); }catch(e){} }, 800);
+}else{
+  // Normal browser: simulate login latency, then redirect back to complete the flow.
+  setTimeout(finish, 1400);
+}
 </script>
 </body>
 </html>
