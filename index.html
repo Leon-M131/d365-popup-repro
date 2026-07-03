@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>D365 Popup Repro · 父标签</title>
+<style>
+  :root{
+    --blue:#0078d4; --blue-hover:#106ebe;
+    --ink:#242424; --ink-soft:#605e5c; --line:#e1dfdd;
+    --bg:#f3f2f1; --overlay:rgba(0,0,0,.45);
+    --ok:#107c10; --err:#c50f1f; --warn:#9d5d00;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    background:var(--bg); color:var(--ink);
+    height:100vh; overflow:hidden; display:flex; flex-direction:column;
+  }
+  /* 假的应用外壳，仅用于还原截图的背景语境 */
+  .appbar{
+    background:#0b3d68; color:#fff; height:48px;
+    display:flex; align-items:center; padding:0 16px; font-size:14px; gap:12px; flex:0 0 auto;
+  }
+  .appbar .badge{background:#ffffff22;border-radius:3px;padding:2px 8px;font-size:12px;}
+  .stage{flex:1; position:relative; display:flex;}
+  .canvas{flex:1; padding:24px; overflow:auto;}
+  .canvas h1{font-size:20px;font-weight:600;margin-bottom:6px;}
+  .canvas p{color:var(--ink-soft);font-size:13px;max-width:60ch;margin-bottom:16px;}
+
+  /* 控制条 */
+  .controls{
+    display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+    background:#fff;border:1px solid var(--line);border-radius:6px;padding:12px 16px;margin-bottom:16px;
+  }
+  .controls label{font-size:12px;color:var(--ink-soft);display:flex;align-items:center;gap:6px;}
+  .controls input[type=number]{width:80px;padding:4px 6px;border:1px solid var(--line);border-radius:4px;font-size:13px;}
+  .controls .metric{font-size:13px;}
+  .controls .metric b{font-size:16px;color:var(--blue);}
+  button{font-family:inherit;font-size:13px;cursor:pointer;border-radius:4px;padding:6px 14px;border:1px solid transparent;}
+  .btn-primary{background:var(--blue);color:#fff;}
+  .btn-primary:hover{background:var(--blue-hover);}
+  .btn-secondary{background:#fff;color:var(--ink);border-color:#8a8886;}
+  .btn-secondary:hover{background:#f3f2f1;}
+  button:focus-visible{outline:2px solid var(--blue);outline-offset:2px;}
+
+  /* 通道状态表 */
+  .channels{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-bottom:16px;}
+  .chan{background:#fff;border:1px solid var(--line);border-left:4px solid #c8c6c4;border-radius:4px;padding:8px 12px;font-size:12px;}
+  .chan .k{color:var(--ink-soft);}
+  .chan .v{font-weight:600;margin-top:2px;font-family:ui-monospace,Consolas,monospace;font-size:12px;}
+  .chan.ok{border-left-color:var(--ok);} .chan.ok .v{color:var(--ok);}
+  .chan.err{border-left-color:var(--err);} .chan.err .v{color:var(--err);}
+  .chan.warn{border-left-color:var(--warn);} .chan.warn .v{color:var(--warn);}
+
+  /* 日志控制台 */
+  .console{
+    background:#1b1a19;color:#d6d6d6;border-radius:6px;height:230px;overflow:auto;
+    font-family:ui-monospace,"SF Mono",Consolas,monospace;font-size:12px;line-height:1.6;padding:10px 12px;
+  }
+  .console .row{white-space:pre-wrap;word-break:break-word;}
+  .console .t{color:#7a7a7a;}
+  .console .ok{color:#5bd85b;} .console .err{color:#ff6b6b;} .console .warn{color:#ffc46b;} .console .step{color:#6bb9ff;}
+
+  /* 对话框（还原截图） */
+  .overlay{position:absolute;inset:0;background:var(--overlay);display:none;align-items:center;justify-content:center;z-index:10;}
+  .overlay.show{display:flex;}
+  .dialog{background:#fff;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.28);width:min(680px,92vw);padding:26px 28px;}
+  .dialog .top{display:flex;align-items:flex-start;gap:12px;}
+  .dialog .x{margin-left:auto;background:none;border:none;font-size:18px;color:var(--ink-soft);cursor:pointer;line-height:1;padding:2px 6px;}
+  .dialog h2{font-size:20px;font-weight:600;}
+  .dialog .body{color:#323130;font-size:14px;line-height:1.6;margin:14px 0 24px;}
+  .dialog .actions{display:flex;justify-content:flex-end;gap:10px;}
+  .icon{flex:0 0 auto;margin-top:2px;}
+  .success-banner{
+    position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:20;
+    background:#dff6dd;border:1px solid #107c10;color:#0b5c0b;padding:10px 18px;border-radius:6px;
+    font-size:14px;display:none;align-items:center;gap:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);
+  }
+  .success-banner.show{display:flex;}
+</style>
+</head>
+<body>
+  <div class="appbar">
+    <span>⊞ Contoso Care</span>
+    <span class="badge">Model-driven app · repro harness</span>
+  </div>
+
+  <div class="stage">
+    <div class="canvas">
+      <h1>Dynamics 365 弹窗登录循环 · 复现工具</h1>
+      <p>这个页面模拟 MSAL.js 在静默取 token 失败（AADSTS700084 / AADSTS160021）后回退到 <code>window.open</code> 交互式弹窗的流程。它用真实的浏览器通道把授权码从弹窗传回本标签；哪条通道被切断，下方“回调通道”和控制台会直接显示出来。在普通浏览器里回调会成功、循环终止；在会隔离标签页的浏览器里，若回调无法送达，就会弹出下面那个“无法打开窗口”的警告并在每次点 Close 时重新触发。</p>
+
+      <div class="controls">
+        <button class="btn-primary" id="startBtn">开始登录流程</button>
+        <button class="btn-secondary" id="resetBtn">重置</button>
+        <label>弹窗回调超时(ms)
+          <input type="number" id="timeout" value="8000" min="1000" step="500">
+        </label>
+        <span class="metric">弹窗尝试次数：<b id="retryCount">0</b></span>
+      </div>
+
+      <div class="channels" id="channels">
+        <div class="chan" id="ch-open"><div class="k">window.open() 返回</div><div class="v">—</div></div>
+        <div class="chan" id="ch-poll"><div class="k">父标签轮询弹窗 location（同源）</div><div class="v">—</div></div>
+        <div class="chan" id="ch-opener"><div class="k">弹窗内 window.opener</div><div class="v">—</div></div>
+        <div class="chan" id="ch-pm"><div class="k">postMessage 回调</div><div class="v">—</div></div>
+        <div class="chan" id="ch-bc"><div class="k">BroadcastChannel 回调</div><div class="v">—</div></div>
+      </div>
+
+      <div class="console" id="console"></div>
+    </div>
+
+    <!-- 成功提示 -->
+    <div class="success-banner" id="success">✔ 已登录 —— 回调经 <span id="successChan"></span> 送达，循环终止。</div>
+
+    <!-- 对话框 1：Sign in to continue（截图 1） -->
+    <div class="overlay" id="dlgSignin">
+      <div class="dialog" role="dialog" aria-labelledby="s1title">
+        <div class="top">
+          <svg class="icon" width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><path fill="#c50f1f" d="M12 2 1 21h22L12 2z"/><rect x="11" y="9" width="2" height="6" fill="#fff"/><rect x="11" y="17" width="2" height="2" fill="#fff"/></svg>
+          <h2 id="s1title">Sign in to continue</h2>
+          <button class="x" data-close="dlgSignin" aria-label="Close">✕</button>
+        </div>
+        <div class="body">Some components of this app require you to sign in. If you don't sign in, parts of the app may not work.</div>
+        <div class="actions"><button class="btn-primary" id="signinBtn">Sign in</button></div>
+      </div>
+    </div>
+
+    <!-- 对话框 2：Warning · popup blocked（截图 2） -->
+    <div class="overlay" id="dlgWarning">
+      <div class="dialog" role="dialog" aria-labelledby="s2title">
+        <div class="top">
+          <svg class="icon" width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#c50f1f"/><rect x="11" y="10" width="2" height="7" fill="#fff"/><rect x="11" y="6.5" width="2" height="2" fill="#fff"/></svg>
+          <h2 id="s2title">Warning</h2>
+          <button class="x" data-close="dlgWarning" aria-label="Close">✕</button>
+        </div>
+        <div class="body">A Microsoft Dynamics 365 window was unable to open, and may have been blocked by a pop-up blocker. Please add this Microsoft Dynamics 365 server to the list of sites your pop-up blocker allows to open new windows:</div>
+        <div class="actions">
+          <button class="btn-primary" id="warnCloseBtn">Close</button>
+          <button class="btn-secondary" id="warnCancelBtn">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ---------- 小工具 ---------- */
+const $ = id => document.getElementById(id);
+const consoleEl = $('console');
+function log(msg, cls){
+  const t = new Date().toISOString().substr(11,12);
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.innerHTML = '<span class="t">'+t+'</span>  <span class="'+(cls||'')+'">'+msg.replace(/</g,'&lt;')+'</span>';
+  consoleEl.appendChild(row);
+  consoleEl.scrollTop = consoleEl.scrollHeight;
+}
+function setChan(id, text, state){
+  const el = $('ch-'+id);
+  el.querySelector('.v').textContent = text;
+  el.className = 'chan' + (state ? ' '+state : '');
+}
+function showDlg(id){ $(id).classList.add('show'); }
+function hideDlg(id){ $(id).classList.remove('show'); }
+
+/* ---------- 状态 ---------- */
+let popupRef=null, bc=null, pollTimer=null, timeoutTimer=null, resolved=false, retryCount=0;
+const CHANNEL='d365_auth_repro';
+
+/* ---------- 主流程：模拟 MSAL 静默失败 → 弹窗 ---------- */
+function startAuth(){
+  resolved=false;
+  hideDlg('dlgSignin'); hideDlg('dlgWarning'); $('success').classList.remove('show');
+  ['open','poll','opener','pm','bc'].forEach(k=>setChan(k,'…',''));
+  log('acquireTokenSilent() → 尝试 grant_type=refresh_token …','step');
+  setTimeout(()=>{
+    log('POST /oauth2/v2.0/token → 400  AADSTS700084（SPA refresh token 已过期，不可续期）','err');
+    log('acquireTokenSilent() → 回退到隐藏 iframe，prompt=none …','step');
+    setTimeout(()=>{
+      log('/authorize → #error=interaction_required  AADSTS160021（服务器端无会话）','err');
+      log('两条静默通道均失败 → 抛 InteractionRequiredAuthError → 回退到交互式弹窗','warn');
+      openAuthPopup();
+    },450);
+  },450);
+}
+
+/* ---------- 打开弹窗并多通道监听回调 ---------- */
+function openAuthPopup(){
+  retryCount++; $('retryCount').textContent = retryCount;
+
+  // 通道 A：BroadcastChannel
+  try{
+    bc = new BroadcastChannel(CHANNEL);
+    bc.onmessage = e => onCallback('BroadcastChannel', e.data);
+    log('BroadcastChannel("'+CHANNEL+'") 已就绪，等待回调');
+  }catch(err){ log('BroadcastChannel 不可用：'+err,'warn'); setChan('bc','unavailable','warn'); }
+
+  // 通道 B：postMessage
+  window.addEventListener('message', onWindowMessage);
+
+  // 通道 C：window.open + 轮询 location（MSAL monitorPopupForHash 的做法）
+  const url = 'auth-popup.html';
+  log('window.open("'+url+'") …','step');
+  try{
+    popupRef = window.open(url, 'd365-auth', 'width=520,height=620,left=220,top=90');
+  }catch(err){
+    popupRef = null; log('window.open() 抛异常：'+err,'err');
+  }
+
+  if(!popupRef){
+    log('window.open() 返回 null → 弹窗被拦截，根本没打开','err');
+    setChan('open','null（被拦截）','err');
+    failAttempt('window.open 返回 null'); return;
+  }
+  log('window.open() 返回了一个 window 句柄','ok');
+  setChan('open','句柄已返回','ok');
+
+  let sameOriginReads=0, crossOriginBlocks=0;
+  pollTimer = setInterval(()=>{
+    if(resolved) return;
+    // 弹窗是否已被关闭
+    let closed=null;
+    try{ closed = popupRef.closed; }catch(e){ /* 句柄本身不可访问 */ }
+    if(closed===true){
+      log('轮询发现弹窗已关闭，但未收到 code（相当于 MSAL 的 user_cancelled）','warn');
+      clearInterval(pollTimer);
+      failAttempt('弹窗被关闭 / user_cancelled'); return;
+    }
+    // 尝试同源读取弹窗 location.href（跨源会抛错）
+    try{
+      const href = popupRef.location.href;
+      sameOriginReads++;
+      if(href && href.indexOf('#code=')!==-1){
+        onCallback('同源轮询 popup.location', {code: popupRef.location.hash});
+      }
+    }catch(e){
+      crossOriginBlocks++;
+    }
+  },300);
+
+  const timeoutMs = parseInt($('timeout').value,10) || 8000;
+  timeoutTimer = setTimeout(()=>{
+    if(resolved) return;
+    log('超时 '+timeoutMs+'ms —— 任何通道都没送回 code','err');
+    log('  同源可读取次数='+sameOriginReads+'，跨源被拦截次数='+crossOriginBlocks);
+    setChan('poll', sameOriginReads>0 ? (sameOriginReads+' 次可读') : '始终不可读（被切断）', sameOriginReads>0?'ok':'err');
+    failAttempt('monitor_window_timeout（回调始终未送达）');
+  }, timeoutMs);
+}
+
+function onWindowMessage(e){
+  log('收到 postMessage，来源 origin：'+e.origin);
+  if(e.data && e.data.code){
+    setChan('pm','已送达','ok');
+    onCallback('postMessage（origin '+e.origin+'）', e.data);
+  }else{
+    log('  （该消息不含 code，忽略）','warn');
+  }
+}
+
+function onCallback(channel, data){
+  if(resolved) return;
+  resolved = true;
+  if(channel.indexOf('BroadcastChannel')===0) setChan('bc','已送达','ok');
+  if(channel.indexOf('同源轮询')===0) setChan('poll','读到 #code','ok');
+  log('✔ 收到授权码回调，通道：'+channel,'ok');
+  cleanup();
+  try{ if(popupRef && !popupRef.closed) popupRef.close(); }catch(e){}
+  $('successChan').textContent = channel;
+  $('success').classList.add('show');
+  log('登录成功，循环终止。','ok');
+}
+
+function failAttempt(reason){
+  if(resolved) return;
+  resolved = true;
+  cleanup();
+  log('交互式登录失败：'+reason,'err');
+  log('→ Dynamics 365 判定为“弹窗被拦截”，弹出 Warning 对话框','warn');
+  showDlg('dlgWarning');
+}
+
+function cleanup(){
+  clearInterval(pollTimer); clearTimeout(timeoutTimer);
+  window.removeEventListener('message', onWindowMessage);
+  try{ if(bc) bc.close(); }catch(e){}
+  bc=null;
+}
+
+/* ---------- 事件绑定 ---------- */
+$('startBtn').onclick = ()=>{ log('—— 用户进入应用 ——'); showDlg('dlgSignin'); };
+$('signinBtn').onclick = ()=>{ log('用户点击 Sign in'); startAuth(); };
+$('warnCloseBtn').onclick = ()=>{ hideDlg('dlgWarning'); log('用户点击 Close → D365 重新触发弹窗（复现循环）','warn'); startAuth(); };
+$('warnCancelBtn').onclick = ()=>{ hideDlg('dlgWarning'); log('用户点击 Cancel → 中止循环'); };
+document.querySelectorAll('[data-close]').forEach(b=> b.onclick = ()=> hideDlg(b.dataset.close));
+$('resetBtn').onclick = ()=>{
+  cleanup(); resolved=false; retryCount=0; $('retryCount').textContent='0';
+  hideDlg('dlgSignin'); hideDlg('dlgWarning'); $('success').classList.remove('show');
+  ['open','poll','opener','pm','bc'].forEach(k=>setChan(k,'—',''));
+  consoleEl.innerHTML=''; log('已重置。点击“开始登录流程”重新运行。');
+};
+
+/* 弹窗会通过 BroadcastChannel 顺带汇报它那边 window.opener 的状态 */
+try{
+  const infoBc = new BroadcastChannel(CHANNEL+'_info');
+  infoBc.onmessage = e=>{
+    if(e.data && e.data.opener!==undefined){
+      setChan('opener', e.data.opener ? 'present' : 'NULL（被切断）', e.data.opener?'ok':'err');
+      log('弹窗汇报：其 window.opener = '+(e.data.opener?'present':'NULL'), e.data.opener?'ok':'err');
+    }
+  };
+}catch(e){}
+
+log('复现工具已加载。点击“开始登录流程”开始。');
+log('提示：在普通浏览器里回调会成功；请把此页在 Menlo 云浏览器中打开以复现问题。');
+</script>
+</body>
+</html>

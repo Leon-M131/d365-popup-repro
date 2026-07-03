@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in · auth popup</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;background:#fff;color:#242424;padding:22px;}
+  h1{font-size:18px;font-weight:600;margin-bottom:4px;}
+  .sub{color:#605e5c;font-size:13px;margin-bottom:16px;}
+  button{font-family:inherit;font-size:13px;cursor:pointer;border-radius:4px;padding:8px 16px;border:none;background:#0078d4;color:#fff;}
+  button:hover{background:#106ebe;}
+  .log{background:#1b1a19;color:#d6d6d6;border-radius:6px;margin-top:16px;padding:10px 12px;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.6;max-height:340px;overflow:auto;}
+  .log .ok{color:#5bd85b;} .log .err{color:#ff6b6b;} .log .warn{color:#ffc46b;}
+  .spinner{display:inline-block;width:14px;height:14px;border:2px solid #c8c6c4;border-top-color:#0078d4;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  @media (prefers-reduced-motion: reduce){.spinner{animation:none;}}
+</style>
+</head>
+<body>
+  <h1>Microsoft 登录（模拟）</h1>
+  <div class="sub" id="status"><span class="spinner"></span>正在完成登录，准备把授权码回传父标签…</div>
+  <button id="manualBtn">手动完成登录并回传</button>
+  <div class="log" id="log"></div>
+
+<script>
+const CHANNEL='d365_auth_repro';
+const logEl=document.getElementById('log');
+function log(msg,cls){
+  const t=new Date().toISOString().substr(11,12);
+  const r=document.createElement('div');
+  r.innerHTML='<span style="color:#7a7a7a">'+t+'</span>  <span class="'+(cls||'')+'">'+msg.replace(/</g,'&lt;')+'</span>';
+  logEl.appendChild(r); logEl.scrollTop=logEl.scrollHeight;
+}
+
+log('弹窗已加载：'+location.href);
+
+// 立刻向父标签汇报 opener 状态（这是判断跨标签是否被切断的关键信号）
+const openerPresent = !!window.opener;
+log('window.opener = '+(openerPresent ? 'present' : 'NULL —— 与父标签的关联已被切断'), openerPresent?'ok':'err');
+try{
+  const infoBc=new BroadcastChannel(CHANNEL+'_info');
+  infoBc.postMessage({opener: openerPresent});
+  log('已通过 BroadcastChannel 向父标签汇报 opener 状态');
+}catch(e){ log('无法汇报 opener 状态：'+e,'warn'); }
+
+const code='FAKE_CODE_'+Math.random().toString(36).slice(2,10);
+
+function completeSignIn(){
+  document.getElementById('status').textContent='已登录，正在回传授权码…';
+  log('开始通过三条通道回传 code='+code,'');
+
+  // 通道 A：BroadcastChannel
+  try{
+    const bc=new BroadcastChannel(CHANNEL);
+    bc.postMessage({code, via:'broadcastchannel'});
+    log('① 已通过 BroadcastChannel 发送','ok');
+  }catch(e){ log('① BroadcastChannel 发送失败：'+e,'err'); }
+
+  // 通道 B：postMessage 给 opener
+  try{
+    if(window.opener){
+      window.opener.postMessage({code, via:'postmessage'}, '*');
+      log('② 已通过 window.opener.postMessage 发送','ok');
+    }else{
+      log('② 无法 postMessage：window.opener 为 NULL','err');
+    }
+  }catch(e){ log('② opener.postMessage 失败：'+e,'err'); }
+
+  // 通道 C：把 code 写进自己的 location.hash，供父标签同源轮询读取
+  try{
+    location.hash='code='+code;
+    log('③ 已设置 location.hash = #code=… （父标签可同源轮询读取）','ok');
+  }catch(e){ log('③ 设置 hash 失败：'+e,'err'); }
+
+  log('回传完毕。若父标签收到任一通道，即视为登录成功。');
+}
+
+document.getElementById('manualBtn').onclick=completeSignIn;
+
+// 模拟登录页跳转耗时，1.2 秒后自动回传（普通浏览器下这一步会让循环终止）
+setTimeout(completeSignIn, 1200);
+</script>
+</body>
+</html>
