@@ -87,7 +87,6 @@
     <div class="canvas">
       <h1>Dynamics 365 popup sign-in loop · reproduction</h1>
       <p>This harness reproduces the MSAL popup flow. On <b>Sign in</b> it simulates the silent-token failures (AADSTS700084, then AADSTS160021), then opens a real <code>window.open</code> popup. The popup makes a genuine <b>cross-origin round trip</b> — app origin → a different "identity provider" origin (<code>htmlpreview.github.io</code>) → back to the app origin's <code>redirect.html#code=…</code> — exactly like app → <code>login.microsoftonline.com</code> → redirect_uri. The parent then tries to read the code back over four channels; whichever is severed shows up in the cards and console.</p>
-      <div class="test-note"><b>How to test:</b> open this page in a <b>normal browser first</b> — you should see the green "Signed in" banner (the round trip completes). Then open the <i>same URL</i> in the <b>Menlo cloud browser</b>. If the popup is isolated into a surrogate tab, the callback won't return, you'll get the "unable to open window" Warning, and Close will re-trigger it. The cards tell you which channel Menlo cut.</p></div>
 
       <div class="controls">
         <button class="btn-primary" id="startBtn">Start sign-in flow</button>
