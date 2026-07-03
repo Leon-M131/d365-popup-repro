@@ -17,7 +17,6 @@
     background:var(--bg); color:var(--ink);
     height:100vh; overflow:hidden; display:flex; flex-direction:column;
   }
-  /* Fake app shell, only to recreate the screenshot's context */
   .appbar{
     background:#0b3d68; color:#fff; height:48px;
     display:flex; align-items:center; padding:0 16px; font-size:14px; gap:12px; flex:0 0 auto;
@@ -26,10 +25,10 @@
   .stage{flex:1; position:relative; display:flex;}
   .canvas{flex:1; padding:24px; overflow:auto;}
   .canvas h1{font-size:20px;font-weight:600;margin-bottom:6px;}
-  .canvas p{color:var(--ink-soft);font-size:13px;max-width:70ch;margin-bottom:16px;}
+  .canvas p{color:var(--ink-soft);font-size:13px;max-width:78ch;margin-bottom:12px;}
+  .canvas .test-note{background:#fff4ce;border:1px solid #e6c200;border-radius:6px;padding:10px 14px;font-size:13px;color:#4a3c00;max-width:78ch;margin-bottom:16px;}
   code{font-family:ui-monospace,Consolas,monospace;background:#eceae8;padding:1px 5px;border-radius:3px;font-size:12px;}
 
-  /* Control bar */
   .controls{
     display:flex;align-items:center;gap:16px;flex-wrap:wrap;
     background:#fff;border:1px solid var(--line);border-radius:6px;padding:12px 16px;margin-bottom:16px;
@@ -45,7 +44,6 @@
   .btn-secondary:hover{background:#f3f2f1;}
   button:focus-visible{outline:2px solid var(--blue);outline-offset:2px;}
 
-  /* Callback channel cards */
   .channels{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px;margin-bottom:16px;}
   .chan{background:#fff;border:1px solid var(--line);border-left:4px solid #c8c6c4;border-radius:4px;padding:8px 12px;font-size:12px;}
   .chan .k{color:var(--ink-soft);}
@@ -54,16 +52,14 @@
   .chan.err{border-left-color:var(--err);} .chan.err .v{color:var(--err);}
   .chan.warn{border-left-color:var(--warn);} .chan.warn .v{color:var(--warn);}
 
-  /* Log console */
   .console{
-    background:#1b1a19;color:#d6d6d6;border-radius:6px;height:230px;overflow:auto;
+    background:#1b1a19;color:#d6d6d6;border-radius:6px;height:220px;overflow:auto;
     font-family:ui-monospace,"SF Mono",Consolas,monospace;font-size:12px;line-height:1.6;padding:10px 12px;
   }
   .console .row{white-space:pre-wrap;word-break:break-word;}
   .console .t{color:#7a7a7a;}
   .console .ok{color:#5bd85b;} .console .err{color:#ff6b6b;} .console .warn{color:#ffc46b;} .console .step{color:#6bb9ff;}
 
-  /* Dialogs (recreate the screenshots) */
   .overlay{position:absolute;inset:0;background:var(--overlay);display:none;align-items:center;justify-content:center;z-index:10;}
   .overlay.show{display:flex;}
   .dialog{background:#fff;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.28);width:min(680px,92vw);padding:26px 28px;}
@@ -90,20 +86,21 @@
   <div class="stage">
     <div class="canvas">
       <h1>Dynamics 365 popup sign-in loop · reproduction</h1>
-      <p>This page reproduces how MSAL.js, after silent token acquisition fails (AADSTS700084 / AADSTS160021), falls back to an interactive <code>window.open</code> popup. It uses real browser channels to pass the authorization code from the popup back to this tab; whichever channel is severed shows up directly in the "Callback channels" cards and the console below. In a normal browser the callback succeeds and the loop ends; in a browser that isolates tabs, if the callback can't get through, the "unable to open window" warning appears and re-triggers on every Close click.</p>
+      <p>This harness reproduces the MSAL popup flow. On <b>Sign in</b> it simulates the silent-token failures (AADSTS700084, then AADSTS160021), then opens a real <code>window.open</code> popup. The popup makes a genuine <b>cross-origin round trip</b> — app origin → a different "identity provider" origin (<code>htmlpreview.github.io</code>) → back to the app origin's <code>redirect.html#code=…</code> — exactly like app → <code>login.microsoftonline.com</code> → redirect_uri. The parent then tries to read the code back over four channels; whichever is severed shows up in the cards and console.</p>
+      <div class="test-note"><b>How to test:</b> open this page in a <b>normal browser first</b> — you should see the green "Signed in" banner (the round trip completes). Then open the <i>same URL</i> in the <b>Menlo cloud browser</b>. If the popup is isolated into a surrogate tab, the callback won't return, you'll get the "unable to open window" Warning, and Close will re-trigger it. The cards tell you which channel Menlo cut.</p></div>
 
       <div class="controls">
         <button class="btn-primary" id="startBtn">Start sign-in flow</button>
         <button class="btn-secondary" id="resetBtn">Reset</button>
         <label>Popup callback timeout (ms)
-          <input type="number" id="timeout" value="8000" min="1000" step="500">
+          <input type="number" id="timeout" value="10000" min="2000" step="500">
         </label>
         <span class="metric">Popup attempts: <b id="retryCount">0</b></span>
       </div>
 
       <div class="channels" id="channels">
         <div class="chan" id="ch-open"><div class="k">window.open() returned</div><div class="v">—</div></div>
-        <div class="chan" id="ch-poll"><div class="k">Parent polling popup location (same-origin)</div><div class="v">—</div></div>
+        <div class="chan" id="ch-return"><div class="k">Popup returned to app origin</div><div class="v">—</div></div>
         <div class="chan" id="ch-opener"><div class="k">window.opener inside popup</div><div class="v">—</div></div>
         <div class="chan" id="ch-pm"><div class="k">postMessage callback</div><div class="v">—</div></div>
         <div class="chan" id="ch-bc"><div class="k">BroadcastChannel callback</div><div class="v">—</div></div>
@@ -112,10 +109,9 @@
       <div class="console" id="console"></div>
     </div>
 
-    <!-- Success banner -->
     <div class="success-banner" id="success">✔ Signed in — callback delivered via <span id="successChan"></span>, loop terminated.</div>
 
-    <!-- Dialog 1: Sign in to continue (screenshot 1) -->
+    <!-- Dialog 1: Sign in to continue -->
     <div class="overlay" id="dlgSignin">
       <div class="dialog" role="dialog" aria-labelledby="s1title">
         <div class="top">
@@ -128,7 +124,7 @@
       </div>
     </div>
 
-    <!-- Dialog 2: Warning · popup blocked (screenshot 2) -->
+    <!-- Dialog 2: Warning · popup blocked -->
     <div class="overlay" id="dlgWarning">
       <div class="dialog" role="dialog" aria-labelledby="s2title">
         <div class="top">
@@ -165,46 +161,49 @@ function setChan(id, text, state){
 function showDlg(id){ $(id).classList.add('show'); }
 function hideDlg(id){ $(id).classList.remove('show'); }
 
-/* ---------- state ---------- */
-let popupRef=null, bc=null, pollTimer=null, timeoutTimer=null, resolved=false, retryCount=0;
+/* ---------- config ---------- */
+// Origin B: a DIFFERENT origin (GitHub's HTML preview) standing in for login.microsoftonline.com.
+const LOGIN_URL = 'https://htmlpreview.github.io/?https://github.com/Leon-M131/d365-popup-repro/blob/main/login.html';
 const CHANNEL='d365_auth_repro';
 
-/* ---------- main flow: simulate MSAL silent failure -> popup ---------- */
+/* ---------- state ---------- */
+let popupRef=null, bc=null, pollTimer=null, timeoutTimer=null, resolved=false, retryCount=0;
+
+/* ---------- main flow ---------- */
 function startAuth(){
   resolved=false;
   hideDlg('dlgSignin'); hideDlg('dlgWarning'); $('success').classList.remove('show');
-  ['open','poll','opener','pm','bc'].forEach(k=>setChan(k,'…',''));
+  ['open','return','opener','pm','bc'].forEach(k=>setChan(k,'…',''));
   log('acquireTokenSilent() → trying grant_type=refresh_token …','step');
   setTimeout(()=>{
     log('POST /oauth2/v2.0/token → 400  AADSTS700084 (SPA refresh token expired, cannot be renewed)','err');
     log('acquireTokenSilent() → falling back to hidden iframe, prompt=none …','step');
     setTimeout(()=>{
       log('/authorize → #error=interaction_required  AADSTS160021 (no server-side session)','err');
-      log('Both silent paths failed → throwing InteractionRequiredAuthError → falling back to interactive popup','warn');
+      log('Both silent paths failed → InteractionRequiredAuthError → interactive popup','warn');
       openAuthPopup();
     },450);
   },450);
 }
 
-/* ---------- open popup and listen on multiple channels ---------- */
 function openAuthPopup(){
   retryCount++; $('retryCount').textContent = retryCount;
 
-  // Channel A: BroadcastChannel
+  // Channel A: BroadcastChannel (same-origin scoped; redirect.html on app origin posts here)
   try{
     bc = new BroadcastChannel(CHANNEL);
     bc.onmessage = e => onCallback('BroadcastChannel', e.data);
-    log('BroadcastChannel("'+CHANNEL+'") ready, waiting for callback');
+    log('BroadcastChannel("'+CHANNEL+'") ready');
   }catch(err){ log('BroadcastChannel unavailable: '+err,'warn'); setChan('bc','unavailable','warn'); }
 
   // Channel B: postMessage
   window.addEventListener('message', onWindowMessage);
 
-  // Channel C: window.open + poll location (what MSAL's monitorPopupForHash does)
-  const url = 'auth-popup.html';
-  log('window.open("'+url+'") …','step');
+  // Channel C/D: window.open to the cross-origin login page, then poll location
+  log('window.open() → cross-origin login page (origin B) …','step');
+  log('  target: '+LOGIN_URL);
   try{
-    popupRef = window.open(url, 'd365-auth', 'width=520,height=620,left=220,top=90');
+    popupRef = window.open(LOGIN_URL, 'd365-auth', 'width=560,height=680,left=200,top=80');
   }catch(err){
     popupRef = null; log('window.open() threw: '+err,'err');
   }
@@ -217,20 +216,25 @@ function openAuthPopup(){
   log('window.open() returned a window handle','ok');
   setChan('open','handle returned','ok');
 
-  let sameOriginReads=0, crossOriginBlocks=0;
+  let sameOriginReads=0, crossOriginBlocks=0, becameReadable=false;
   pollTimer = setInterval(()=>{
     if(resolved) return;
-    // Is the popup already closed?
     let closed=null;
-    try{ closed = popupRef.closed; }catch(e){ /* handle itself not accessible */ }
+    try{ closed = popupRef.closed; }catch(e){}
     if(closed===true){
-      log('polling found popup closed before a code arrived (equivalent to MSAL user_cancelled)','warn');
+      log('popup closed before a code arrived (equivalent to MSAL user_cancelled)','warn');
       clearInterval(pollTimer);
       failAttempt('popup closed / user_cancelled'); return;
     }
-    // Try to read popup location.href same-origin (throws when cross-origin)
+    // While the popup is on origin B, reading .location throws (cross-origin) — expected.
+    // Once it redirects back to the app origin (redirect.html), .location becomes readable.
     try{
       const href = popupRef.location.href;
+      if(!becameReadable){
+        becameReadable=true;
+        setChan('return','yes (location readable)','ok');
+        log('popup location became readable → it has returned to the app origin','ok');
+      }
       sameOriginReads++;
       if(href && href.indexOf('#code=')!==-1){
         onCallback('same-origin poll of popup.location', {code: popupRef.location.hash});
@@ -240,12 +244,15 @@ function openAuthPopup(){
     }
   },300);
 
-  const timeoutMs = parseInt($('timeout').value,10) || 8000;
+  const timeoutMs = parseInt($('timeout').value,10) || 10000;
   timeoutTimer = setTimeout(()=>{
     if(resolved) return;
     log('timed out after '+timeoutMs+'ms — no channel delivered a code','err');
     log('  same-origin readable count='+sameOriginReads+', cross-origin blocked count='+crossOriginBlocks);
-    setChan('poll', sameOriginReads>0 ? (sameOriginReads+' reads') : 'never readable (severed)', sameOriginReads>0?'ok':'err');
+    if(!becameReadable){
+      setChan('return','never (stuck cross-origin / severed)','err');
+      log('  the popup never returned to a state this tab could read — handle appears severed or popup never navigated back','err');
+    }
     failAttempt('monitor_window_timeout (callback never delivered)');
   }, timeoutMs);
 }
@@ -264,7 +271,7 @@ function onCallback(channel, data){
   if(resolved) return;
   resolved = true;
   if(channel.indexOf('BroadcastChannel')===0) setChan('bc','delivered','ok');
-  if(channel.indexOf('same-origin')===0) setChan('poll','read #code','ok');
+  if(channel.indexOf('same-origin')===0) setChan('return','yes (read #code)','ok');
   log('✔ auth code callback received via: '+channel,'ok');
   cleanup();
   try{ if(popupRef && !popupRef.closed) popupRef.close(); }catch(e){}
@@ -289,7 +296,7 @@ function cleanup(){
   bc=null;
 }
 
-/* ---------- event bindings ---------- */
+/* ---------- events ---------- */
 $('startBtn').onclick = ()=>{ log('—— user enters the app ——'); showDlg('dlgSignin'); };
 $('signinBtn').onclick = ()=>{ log('user clicked Sign in'); startAuth(); };
 $('warnCloseBtn').onclick = ()=>{ hideDlg('dlgWarning'); log('user clicked Close → D365 re-triggers the popup (reproducing the loop)','warn'); startAuth(); };
@@ -298,11 +305,11 @@ document.querySelectorAll('[data-close]').forEach(b=> b.onclick = ()=> hideDlg(b
 $('resetBtn').onclick = ()=>{
   cleanup(); resolved=false; retryCount=0; $('retryCount').textContent='0';
   hideDlg('dlgSignin'); hideDlg('dlgWarning'); $('success').classList.remove('show');
-  ['open','poll','opener','pm','bc'].forEach(k=>setChan(k,'—',''));
+  ['open','return','opener','pm','bc'].forEach(k=>setChan(k,'—',''));
   consoleEl.innerHTML=''; log('Reset. Click "Start sign-in flow" to run again.');
 };
 
-/* The popup reports its own window.opener status back over BroadcastChannel */
+/* redirect.html (app origin) reports its window.opener status over BroadcastChannel */
 try{
   const infoBc = new BroadcastChannel(CHANNEL+'_info');
   infoBc.onmessage = e=>{
@@ -314,7 +321,7 @@ try{
 }catch(e){}
 
 log('Reproduction harness loaded. Click "Start sign-in flow" to begin.');
-log('Note: in a normal browser the callback succeeds; open this page in the Menlo cloud browser to reproduce the issue.');
+log('Test in a normal browser first (expect green "Signed in"), then in the Menlo cloud browser.');
 </script>
 </body>
 </html>
