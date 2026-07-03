@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Redirect · callback (app origin)</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:"Segoe UI",system-ui,-apple-system,sans-serif;background:#fff;color:#242424;padding:22px;}
+  h1{font-size:18px;font-weight:600;margin-bottom:4px;}
+  .sub{color:#605e5c;font-size:13px;margin-bottom:16px;}
+  .log{background:#1b1a19;color:#d6d6d6;border-radius:6px;margin-top:16px;padding:10px 12px;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.6;max-height:340px;overflow:auto;}
+  .log .ok{color:#5bd85b;} .log .err{color:#ff6b6b;} .log .warn{color:#ffc46b;}
+</style>
+</head>
+<body>
+  <h1>Returned to the app origin</h1>
+  <div class="sub" id="status">Delivering the authorization code back to the parent tab…</div>
+  <div class="log" id="log"></div>
+
+<script>
+// The popup lands here after the cross-origin round trip. This is the same origin as
+// the parent app, so same-origin channels (opener, BroadcastChannel, location polling)
+// SHOULD work — unless the browser has isolated this popup into a separate surrogate tab.
+const CHANNEL='d365_auth_repro';
+const logEl=document.getElementById('log');
+function log(msg,cls){
+  const t=new Date().toISOString().substr(11,12);
+  const r=document.createElement('div');
+  r.innerHTML='<span style="color:#7a7a7a">'+t+'</span>  <span class="'+(cls||'')+'">'+msg.replace(/</g,'&lt;')+'</span>';
+  logEl.appendChild(r); logEl.scrollTop=logEl.scrollHeight;
+}
+
+log('Redirect landing loaded: '+location.href);
+log('This document is on origin: '+location.origin+' (same as the app)');
+
+const openerPresent = !!window.opener;
+log('window.opener = '+(openerPresent ? 'present' : 'NULL — severed from the parent tab'), openerPresent?'ok':'err');
+try{
+  const infoBc=new BroadcastChannel(CHANNEL+'_info');
+  infoBc.postMessage({opener: openerPresent});
+}catch(e){ log('Could not report opener status: '+e,'warn'); }
+
+const m = (location.hash||'').match(/code=([^&]+)/);
+const code = m ? m[1] : 'NO_CODE';
+log('Parsed code from location.hash: '+code);
+
+// Channel A: BroadcastChannel
+try{
+  const bc=new BroadcastChannel(CHANNEL);
+  bc.postMessage({code, via:'broadcastchannel'});
+  log('① sent via BroadcastChannel','ok');
+}catch(e){ log('① BroadcastChannel send failed: '+e,'err'); }
+
+// Channel B: postMessage to opener
+try{
+  if(window.opener){
+    window.opener.postMessage({code, via:'postmessage'}, '*');
+    log('② sent via window.opener.postMessage','ok');
+  }else{
+    log('② cannot postMessage: window.opener is NULL','err');
+  }
+}catch(e){ log('② opener.postMessage failed: '+e,'err'); }
+
+// Channel C: the code is already in this document's location.hash, which the parent
+// reads by polling popup.location (same-origin) — MSAL's monitorPopupForHash.
+log('③ code is in location.hash — parent can read it via same-origin polling of popup.location','ok');
+log('Callback delivery complete.');
+</script>
+</body>
+</html>

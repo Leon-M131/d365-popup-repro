@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in · identity provider (origin B)</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:"Segoe UI",system-ui,-apple-system,sans-serif;background:#fff;color:#242424;padding:22px;}
+  h1{font-size:18px;font-weight:600;margin-bottom:4px;}
+  .sub{color:#605e5c;font-size:13px;margin-bottom:16px;}
+  button{font-family:inherit;font-size:13px;cursor:pointer;border-radius:4px;padding:8px 16px;border:none;background:#0078d4;color:#fff;}
+  button:hover{background:#106ebe;}
+  .log{background:#1b1a19;color:#d6d6d6;border-radius:6px;margin-top:16px;padding:10px 12px;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.6;max-height:340px;overflow:auto;}
+  .log .ok{color:#5bd85b;} .log .err{color:#ff6b6b;} .log .warn{color:#ffc46b;}
+  .spinner{display:inline-block;width:14px;height:14px;border:2px solid #c8c6c4;border-top-color:#0078d4;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  @media (prefers-reduced-motion: reduce){.spinner{animation:none;}}
+</style>
+</head>
+<body>
+  <h1>Microsoft sign-in (simulated · identity provider)</h1>
+  <div class="sub" id="status"><span class="spinner"></span>On the identity-provider origin. Authenticating, then redirecting the popup back to the app…</div>
+  <button id="manualBtn">Manually finish and redirect back</button>
+  <div class="log" id="log"></div>
+
+<script>
+// This page stands in for login.microsoftonline.com: it is on a DIFFERENT origin
+// from the app. It redirects the popup back to the app's redirect_uri with a #code,
+// exactly like the real authorization-code flow.
+const REDIRECT_URI = 'https://leon-m131.github.io/d365-popup-repro/redirect.html';
+
+const logEl=document.getElementById('log');
+function log(msg,cls){
+  const t=new Date().toISOString().substr(11,12);
+  const r=document.createElement('div');
+  r.innerHTML='<span style="color:#7a7a7a">'+t+'</span>  <span class="'+(cls||'')+'">'+msg.replace(/</g,'&lt;')+'</span>';
+  logEl.appendChild(r); logEl.scrollTop=logEl.scrollHeight;
+}
+
+log('Login page loaded: '+location.href);
+log('This document is on origin: '+location.origin);
+log('(This is a DIFFERENT origin from the app — the cross-origin hop that isolation keys off.)','warn');
+log('window.opener here = '+(window.opener ? 'present' : 'NULL'), window.opener?'ok':'err');
+
+const code='FAKE_CODE_'+Math.random().toString(36).slice(2,10);
+
+function finish(){
+  document.getElementById('status').textContent='Authenticated. Redirecting the popup back to the app origin…';
+  log('Redirecting popup → '+REDIRECT_URI+'#code=…','');
+  location.href = REDIRECT_URI + '#code=' + code;
+}
+document.getElementById('manualBtn').onclick=finish;
+
+// Simulate login latency, then redirect back (in a normal browser this completes the flow)
+setTimeout(finish, 1400);
+</script>
+</body>
+</html>
